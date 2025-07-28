@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
-	"strings"
+	"httpfromtcp/internal/request"
 )
 
 func main() {
@@ -20,50 +20,18 @@ func main() {
 			fmt.Printf("error creating a tcp connection %s\n", err)
 			return
 		}
+		fmt.Printf("established a tcp connection on port 42069\n")
 		defer connection.Close()
 
-		fmt.Printf("established a tcp connection on port 42069\n")
-		lineChannel := getLinesChannel(connection)
-		for line := range lineChannel {
-			fmt.Println(line)
-		}
-	}
-}
-
-func getLinesChannel(connection net.Conn) <-chan string {
-	ch := make(chan string)
-	go readRoutine(connection, ch)
-	return ch 
-}
-
-func readRoutine(connection net.Conn, ch chan string) {
-	chunks := make([]byte, 8)
-	var text string
-
-	for {
-		n, err := connection.Read(chunks)
-
-		if n > 0 {
-			text += string(chunks[:n])
-            lines := strings.Split(text, "\n")
-			
-			for idx, line := range lines {
-				if idx != len(lines) - 1 {
-					ch <- line 
-				} else {
-					text = line
-				}
-			}
-		}
-
+		req, err := request.RequestFromReader(connection)
 		if err != nil {
-			break
+			fmt.Printf("error reading request sent over the connection")
 		}
-	}
 
-	if len(text) > 0 {
-		ch <- text
+		fmt.Printf("Request line:\n")
+		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
+		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
+		fmt.Printf("---------------------------------------------\n")
 	}
-
-	close(ch)
 }

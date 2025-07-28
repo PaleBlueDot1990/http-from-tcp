@@ -6,25 +6,6 @@ import (
 	"strings"
 )
 
-type Request struct {
-	RequestLine RequestLine 
-}
-
-type RequestLine struct {
-	HttpVersion string 
-	RequestTarget string 
-	Method string 
-}
-
-func RequestFromReader(reader io.Reader) (*Request, error) {
-	line, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseRequestLine(string(line))
-}
-
 /*
 HTTP message format according to RFC 9112:
 start-line CRLF              -> request (for request) or response status (for response)
@@ -40,36 +21,106 @@ Host: localhost:42069\r\n
 \r\n
 */
 
-func parseRequestLine(line string) (*Request, error) {
+const bufferSize = 8 
+
+type Request struct {
+	RequestLine RequestLine 
+	ParserState int 
+}
+
+type RequestLine struct {
+	HttpVersion string 
+	RequestTarget string 
+	Method string 
+}
+
+/*
+ It's important to understand the difference. When we read, all we're doing is moving the data 
+ from the reader (which in the case of HTTP is a network connection, but it could be a file as
+ well, our code is agnostic) into our program. When we parse, we're taking that data and 
+ interpreting it (moving it from a []byte to a RequestLine struct). Once its parsed, we can 
+ discard it from the buffer to save memory.
+*/
+
+func RequestFromReader(reader io.Reader) (*Request, error) {
+	buf := make([]byte, bufferSize)
+	readToIndex := 0
+	request := Request{
+		ParserState: 0,
+	}
+
+	for request.ParserState != 1 {
+		if len(buf) == cap(buf) {
+			newBuf := make([]byte, 2*cap(buf))
+			copy(newBuf, buf)
+			buf = newBuf 
+		}
+
+		bytesRead, err := reader.Read(buf[readToIndex:cap(buf)])
+		if err == io.EOF {
+			request.ParserState = 1
+			break 
+		} 
+
+		readToIndex += bytesRead
+		bytesParsed, err := request.parse(buf)
+		if err != nil {
+			return nil, err 
+		}
+
+		newBuf := make([]byte, cap(buf))
+		copy(newBuf, buf[bytesParsed:cap(buf)])
+		buf = newBuf
+		readToIndex -= bytesParsed
+	}
+
+	return &request, nil
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+	switch r.ParserState {
+		case 0:
+			bytesParsed, err := r.parseRequestLine(string(data))
+			if err != nil {
+				return -1, err
+			} else if bytesParsed == 0 {
+				return 0, nil
+			} else {
+				r.ParserState = 1
+				return bytesParsed, nil
+			}
+		case 1:
+			return -1, fmt.Errorf("trying to read data in done state")
+		default:
+			return -1, fmt.Errorf("unknown state")
+	}
+}
+
+func (r *Request) parseRequestLine(line string) (int, error) {
 	clrfIndex := strings.Index(line, "\r\n")
 	if clrfIndex == -1 {
-		fmt.Printf("request line does not contain clrf")
-		return nil, fmt.Errorf("request line does not contain clrf")
+		return 0, nil
 	}
 
 	parts1 := strings.Split(line, "\r\n")[0]
 	parts2 := strings.Split(parts1, " ")
 	if len(parts2) != 3 {
-		fmt.Printf("poorly formatted request line")
-		return nil, fmt.Errorf("poorly formatted request line")
+		return -1, fmt.Errorf("poorly formatted request line")
 	}
 
 	method := parts2[0]
 	if !isMethodCorrect(method) {
-		fmt.Printf("method name is incorrect")
-		return nil, fmt.Errorf("method name is incorrect")
+		return -1, fmt.Errorf("method name is incorrect")
 	}
 
 	requestTarget := parts2[1]
 	if !isTargetCorrect(requestTarget) {
-		fmt.Printf("request target is incorrect")
-		return nil, fmt.Errorf("request target is incorrect")
+		return -1, fmt.Errorf("request target is incorrect")
 	}
 
 	httpVersion := parts2[2]
 	if !isHttpVersionCorrect(httpVersion) {
-		fmt.Printf("http version is incorrect")
-		return nil, fmt.Errorf("http version is incorrect")
+		return -1, fmt.Errorf("http version is incorrect")
 	}
 
 	requestLine := RequestLine{
@@ -78,11 +129,8 @@ func parseRequestLine(line string) (*Request, error) {
 		HttpVersion:   strings.Split(httpVersion, "/")[1],
 	}
 
-	request := Request {
-		RequestLine: requestLine,
-	}
-
-	return &request, nil
+	r.RequestLine = requestLine
+	return clrfIndex + 2, nil
 }
 
 func isMethodCorrect(method string) bool {
