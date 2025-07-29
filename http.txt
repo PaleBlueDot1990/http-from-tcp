@@ -1,0 +1,12 @@
+HTTP message format according to RFC 9112:
+start-line CRLF              -> request (for request) or response status (for response)
+*( field-line CRLF )         -> http headers (key value pairs)
+CRLF
+[ message-body ]             -> the message body is optional 
+
+We will be assuming that at least one header is present in the message.
+
+HTTP message examples-
+GET / HTTP/1.1\r\n
+Host: localhost:42069\r\n
+\r\n
