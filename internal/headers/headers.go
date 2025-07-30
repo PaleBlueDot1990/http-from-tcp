@@ -5,7 +5,40 @@ import (
 	"strings"
 )
 
+type HeaderKeySet = map[rune]bool
 type Headers map[string]string 
+
+var hks HeaderKeySet 
+
+func init() {
+	hks = make(HeaderKeySet)
+	for ch := 'a'; ch <= 'z'; ch++ {
+		hks[ch] = true
+	}
+
+	for ch := 'A'; ch <= 'Z'; ch++ {
+		hks[ch] = true
+	}
+
+	for ch := '0'; ch <= '9'; ch++ {
+		hks[ch] = true
+	}
+
+	hks['!'] = true;
+	hks['#'] = true;
+	hks['$'] = true;
+	hks['%'] = true;
+	hks['&'] = true;
+	hks['\''] = true;
+	hks['*'] = true;
+	hks['+'] = true;
+	hks['-'] = true;
+	hks['.'] = true;
+	hks['^'] = true;
+	hks['_'] = true;
+	hks['|'] = true;
+	hks['~'] = true;
+}
 
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	clrfIdx := strings.Index(string(data), "\r\n")
@@ -40,7 +73,13 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, fmt.Errorf("header field line is incorrect")
 	}
 
-	h[key] = val
+	_val, ok := h[key] 
+	if !ok {
+		h[key] = val
+	} else {
+		h[key] = _val + ", " + val
+	}
+	
 	return clrfIdx+2, false, nil
 }
 
@@ -50,11 +89,12 @@ func isHeaderKeyCorrect(key string) (string, bool) {
 	}
 
 	for _, ch := range key {
-		if ch == ' ' {
+		if !hks[ch] {
 			return key, false
 		}
 	}
 
+	key = strings.ToLower(key)
 	return key, true 
 }
 
