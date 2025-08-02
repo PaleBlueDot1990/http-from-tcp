@@ -20,7 +20,6 @@ func main() {
 			fmt.Printf("error creating a tcp connection %s\n", err)
 			return
 		}
-		fmt.Printf("established a tcp connection on port 42069\n")
 		defer connection.Close()
 
 		req, err := request.RequestFromReader(connection)
@@ -28,10 +27,15 @@ func main() {
 			fmt.Printf("error reading request sent over the connection")
 		}
 
+		fmt.Printf("\n---------------------------------------------\n")
 		fmt.Printf("Request line:\n")
 		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
 		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
-		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("Headers:\n")
+		for key, val := range req.Headers {
+			fmt.Printf("- %s: %s\n", key, val)
+		}
+		fmt.Printf("\n---------------------------------------------\n")
 	}
 }

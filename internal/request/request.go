@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"httpfromtcp/internal/headers"
 )
 
-const bufferSize = 8 
+const bufferSize = 8
 
 type Request struct {
 	RequestLine RequestLine 
-	ParserState int 
+	Headers headers.Headers 
+	ParserState string 
 }
 
 type RequestLine struct {
@@ -26,16 +28,16 @@ type RequestLine struct {
  interpreting it (moving it from a []byte to a RequestLine struct). Once its parsed, we can 
  discard it from the buffer to save memory.
 */
-
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 	request := Request{
-		ParserState: 0,
+		ParserState: "PARSE_METHOD",
+		Headers:     make(headers.Headers),
 	}
 
-	for request.ParserState != 1 {
-		if len(buf) == cap(buf) {
+	for request.ParserState != "DONE" {
+		if readToIndex == cap(buf) {
 			newBuf := make([]byte, 2*cap(buf))
 			copy(newBuf, buf)
 			buf = newBuf 
@@ -43,8 +45,12 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		bytesRead, err := reader.Read(buf[readToIndex:cap(buf)])
 		if err == io.EOF {
-			request.ParserState = 1
-			break 
+			bytesParsed, _ := request.parse(buf)
+			if bytesParsed != 0 {
+				break 
+			} else {
+				return nil, err
+			}
 		} 
 
 		readToIndex += bytesRead
@@ -53,10 +59,12 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err 
 		}
 
-		newBuf := make([]byte, cap(buf))
-		copy(newBuf, buf[bytesParsed:cap(buf)])
-		buf = newBuf
-		readToIndex -= bytesParsed
+		if bytesParsed != 0 {
+			newBuf := make([]byte, cap(buf))
+			copy(newBuf, buf[bytesParsed:cap(buf)])
+			buf = newBuf
+			readToIndex -= bytesParsed
+		}
 	}
 
 	return &request, nil
@@ -64,23 +72,40 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 	switch r.ParserState {
-		case 0:
+		case "PARSE_METHOD":
 			bytesParsed, err := r.parseRequestLine(string(data))
 			if err != nil {
 				return -1, err
 			} else if bytesParsed == 0 {
 				return 0, nil
 			} else {
-				r.ParserState = 1
+				r.ParserState = "PARSE_HEADERS"
 				return bytesParsed, nil
 			}
-		case 1:
-			return -1, fmt.Errorf("trying to read data in done state")
+		case "PARSE_HEADERS":
+			bytesParsed, done, err := r.Headers.Parse(data)
+			if err != nil {
+				return -1, err 
+			} else if bytesParsed == 0 {
+				return 0, nil 
+			} else if !done {
+				return bytesParsed, nil
+			} else {
+				r.ParserState = "DONE"
+				return bytesParsed, nil 
+			}
 		default:
 			return -1, fmt.Errorf("unknown state")
 	}
 }
 
+/*
+Parses the data from http request. If the request has not fully 
+come through, functions returns 0 bytes parsed and a nil error.
+If some error happens while parsing, functions returns -1 and 
+an error. If it successfully parses the request line, it returns 
+total no. of bytes parsed and a nil error.
+*/
 func (r *Request) parseRequestLine(line string) (int, error) {
 	clrfIndex := strings.Index(line, "\r\n")
 	if clrfIndex == -1 {
