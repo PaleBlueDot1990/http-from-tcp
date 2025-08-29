@@ -34,12 +34,12 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 	request := Request{
-		ParserState: "PARSE_METHOD",
+		ParserState: "PARSING_METHOD",
 		Headers:     make(headers.Headers),
 		Body:        make([]byte, 0),
 	}
 
-	for request.ParserState != "DONE" {
+	for request.ParserState != "PARSING_DONE" {
 		if readToIndex == cap(buf) {
 			newBuf := make([]byte, 2*cap(buf))
 			copy(newBuf, buf)
@@ -48,22 +48,29 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		bytesRead, err := reader.Read(buf[readToIndex:])
 		if err == io.EOF {
-			bytesParsed, err := request.parse(buf[:readToIndex])
+			_, err := request.parse(buf[:readToIndex])
 			if err != nil {
 				return nil, err 
 			}
-			if bytesParsed == 0 && (request.ParserState == "PARSE_METHOD" || request.ParserState == "PARSE_HEADERS") {
-				return nil, fmt.Errorf("incomplete http request")
+
+			if request.ParserState != "PARSING_BODY" && request.ParserState != "PARSING_DONE" {
+				return nil, fmt.Errorf("incomplete http request, please check method and headers")
 			}
-			if request.ParserState == "PARSE_BODY" {
-				val, ok := request.Headers["content-length"]
-				if ok {
-					contentLength, _ := strconv.Atoi(val)
-					if len(request.Body) < contentLength {
-						return nil, fmt.Errorf("incomplete http request")
-					}
-				}
+			
+			val, ok := request.Headers["content-length"]
+			if !ok {
+				return &request, nil 
 			}
+
+			contentLength, _ := strconv.Atoi(val)
+			if len(request.Body) < contentLength {
+				return nil, fmt.Errorf("request body is shorter than content-limit %d", contentLength)
+			}
+			if len(request.Body) > contentLength {
+				return nil, fmt.Errorf("request body is longer than content-limit %d", contentLength)
+			}
+			
+			request.ParserState = "PARSING_DONE"
 			return &request, nil 
 		} 
 		readToIndex += bytesRead
@@ -85,17 +92,17 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 	switch r.ParserState {
-		case "PARSE_METHOD":
+		case "PARSING_METHOD":
 			bytesParsed, err := r.parseRequestLine(string(data))
 			if err != nil {
 				return -1, err
 			} else if bytesParsed == 0 {
 				return 0, nil
 			} else {
-				r.ParserState = "PARSE_HEADERS"
+				r.ParserState = "PARSING_HEADERS"
 				return bytesParsed, nil
 			}
-		case "PARSE_HEADERS":
+		case "PARSING_HEADERS":
 			bytesParsed, done, err := r.Headers.Parse(data)
 			if err != nil {
 				return -1, err 
@@ -104,27 +111,18 @@ func (r *Request) parse(data []byte) (int, error) {
 			} else if !done {
 				return bytesParsed, nil
 			} else {
-				r.ParserState = "PARSE_BODY"
+				r.ParserState = "PARSING_BODY"
 				return bytesParsed, nil 
 			}
-		case "PARSE_BODY":
-			val, ok := r.Headers["content-length"]
+		case "PARSING_BODY":
+			_, ok := r.Headers["content-length"]
 			if !ok {
-				r.ParserState = "DONE"
+				r.ParserState = "PARSING_DONE"
 				return 0, nil 
 			}
 			newLength := len(r.Body)+len(data)
 			r.Body = append(r.Body, data...)
 			r.Body = r.Body[:newLength]
-
-			contentLength, _ := strconv.Atoi(val)
-			if len(r.Body) > contentLength {
-				return -1, fmt.Errorf("body length exceeds content-length limit of %d", contentLength)
-			}
-			if len(r.Body) == contentLength {
-				r.ParserState = "DONE"
-				return len(data), nil 
-			}
 			return len(data), nil 
 		default:
 			return -1, fmt.Errorf("unknown state")

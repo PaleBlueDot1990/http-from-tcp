@@ -32,12 +32,18 @@ func main() {
 		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
 		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
+
 		fmt.Printf("Headers:\n")
 		for key, val := range req.Headers {
 			fmt.Printf("- %s: %s\n", key, val)
 		}
+
 		fmt.Printf("Body:\n")
-		fmt.Printf("%s\n", string(req.Body))
+		if len(req.Body) > 0 {
+			fmt.Printf("%s\n", string(req.Body))
+		} else {
+			fmt.Printf("<No body provided as part of this project>\n")
+		}
 		fmt.Printf("\n---------------------------------------------\n")
 	}
 }

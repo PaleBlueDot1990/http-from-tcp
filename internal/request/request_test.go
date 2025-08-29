@@ -116,6 +116,14 @@ func TestRequestLineParse(t *testing.T) {
 	}
 	_, err = RequestFromReader(reader)
 	require.Error(t, err)
+
+	// Test: Incomplete request line
+	reader = &chunkReader{
+		data: "/coffee GET HTTP/1.1",
+		numBytesPerRead: 5,
+	}
+	_, err = RequestFromReader(reader)
+	require.Error(t, err)
 }
 
 func TestRequestHeadersParse(t *testing.T) {
@@ -184,7 +192,7 @@ func TestRequestHeadersParse(t *testing.T) {
 	_, err = RequestFromReader(reader)
 	require.Error(t, err)
 
-	// Test: Missing End of Headers - 1
+	// Test: Incomplete header section
 	reader = &chunkReader{
 		data: "GET / HTTP/1.1\r\n" + 
 			"Host: localhost:42069\r\n" + 
@@ -194,7 +202,7 @@ func TestRequestHeadersParse(t *testing.T) {
 	_, err = RequestFromReader(reader)
 	require.Error(t, err)
 
-	// Test: Missing End of Headers - 2
+	// Test: Incomplete header section 
 	reader = &chunkReader{
 		data: "GET / HTTP/1.1\r\n" + 
 			"Host: localhost:42069\r\n" + 
