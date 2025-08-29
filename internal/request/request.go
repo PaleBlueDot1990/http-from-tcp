@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const bufferSize = 8
@@ -31,6 +33,11 @@ type RequestLine struct {
  discard it from the buffer to save memory.
 */
 func RequestFromReader(reader io.Reader) (*Request, error) {
+	if conn, ok := reader.(net.Conn); ok {
+        conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+        defer conn.SetReadDeadline(time.Time{}) 
+    }
+
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 	request := Request{
