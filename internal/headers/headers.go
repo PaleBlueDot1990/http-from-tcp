@@ -80,6 +80,10 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		h[key] = _val + ", " + val
 	}
 	
+	clrfIdx2 := strings.Index(string(data), "\r\n\r\n")
+	if clrfIdx2 == clrfIdx {
+		return clrfIdx + 4, true, nil 
+	}
 	return clrfIdx+2, false, nil
 }
 

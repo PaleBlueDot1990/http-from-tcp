@@ -2,9 +2,9 @@ package request
 
 import (
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"strings"
-	"httpfromtcp/internal/headers"
 )
 
 const bufferSize = 8
@@ -43,7 +43,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			buf = newBuf 
 		}
 
-		bytesRead, err := reader.Read(buf[readToIndex:cap(buf)])
+		bytesRead, err := reader.Read(buf[readToIndex:])
 		if err == io.EOF {
 			bytesParsed, _ := request.parse(buf)
 			if bytesParsed != 0 {
@@ -52,16 +52,15 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 				return nil, err
 			}
 		} 
-
 		readToIndex += bytesRead
+
 		bytesParsed, err := request.parse(buf)
 		if err != nil {
 			return nil, err 
 		}
-
 		if bytesParsed != 0 {
 			newBuf := make([]byte, cap(buf))
-			copy(newBuf, buf[bytesParsed:cap(buf)])
+			copy(newBuf, buf[bytesParsed:])
 			buf = newBuf
 			readToIndex -= bytesParsed
 		}
@@ -99,13 +98,6 @@ func (r *Request) parse(data []byte) (int, error) {
 	}
 }
 
-/*
-Parses the data from http request. If the request has not fully 
-come through, functions returns 0 bytes parsed and a nil error.
-If some error happens while parsing, functions returns -1 and 
-an error. If it successfully parses the request line, it returns 
-total no. of bytes parsed and a nil error.
-*/
 func (r *Request) parseRequestLine(line string) (int, error) {
 	clrfIndex := strings.Index(line, "\r\n")
 	if clrfIndex == -1 {

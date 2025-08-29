@@ -8,25 +8,35 @@ import (
 )
 
 func TestRequestLineParse(t *testing.T) {
-	// Test: Valid single header
+	// Test: Valid single and last header 
 	headers := make(Headers)
 	data := []byte("Host: localhost:42069\r\n\r\n")
 	n, done, err := headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
+	assert.Equal(t, 25, n)
+	assert.True(t, done)
+
+	// Test: Valid single and non-last header 
+	headers = make(Headers)
+	data = []byte("Host: localhost:42069\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, 23, n)
 	assert.False(t, done)
 
-	// Test: Valid single header with extra whitespace
+	// Test: Valid single and last header with extra whitespace
 	headers = make(Headers)
 	data = []byte("        Host: localhost:42069           \r\n\r\n")
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
-	assert.Equal(t, 42, n)
-	assert.False(t, done)
+	assert.Equal(t, 44, n)
+	assert.True(t, done)
 
 	// Test: Valid 2 Headers with existing headers
 	headers = make(Headers)
@@ -54,8 +64,8 @@ func TestRequestLineParse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
-	assert.Equal(t, 23, n)
-	assert.False(t, done)
+	assert.Equal(t, 25, n)
+	assert.True(t, done)
 
 	// Test: Invalid header key character
 	headers = make(Headers)
@@ -83,6 +93,6 @@ func TestRequestLineParse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069, localhost:69420", headers["host"])
-	assert.Equal(t, 28, n)
-	assert.False(t, done)
+	assert.Equal(t, 30, n)
+	assert.True(t, done)
 }
