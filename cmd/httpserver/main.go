@@ -47,6 +47,10 @@ func handler(w *response.Writer, req *request.Request) {
 		proxyHandler(req, w)
 		return 
 	}
+	if t == "/video" {
+		videoHandler(w)
+		return
+	}
 	handler200(w)
 }
 
@@ -154,7 +158,6 @@ func proxyHandler(req *request.Request, w *response.Writer) {
 	if err != nil {
 		fmt.Printf("Error writing chunked body done: %s", err)
 	}
-	fmt.Printf("Succesfully wrote all chunked data to response\n")
 
 	hashAllChunks := sha256.Sum256(allChunks)
 	hexStr := hex.EncodeToString(hashAllChunks[:])
@@ -163,5 +166,21 @@ func proxyHandler(req *request.Request, w *response.Writer) {
 	trailers["X-Content-SHA256"] = hexStr
 	trailers["X-Content-Length"] = fmt.Sprintf("%d", len(allChunks))
 	w.WriteTrailers(trailers)
+}
+
+func videoHandler(w *response.Writer) {
+	body, err := os.ReadFile("assets/vim.mp4")
+	if err != nil {
+		handler500(w)
+		return 
+	}
+
+	w.WriteRequestLine(response.StatusOK)
+
+	h := response.GetDefaultHeaders(len(body))
+	h["Content-Type"] = "video/mp4"
+	w.WriteHeaders(h)
+
+	w.WriteBody(body)
 }
 
