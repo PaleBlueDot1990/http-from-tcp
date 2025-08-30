@@ -12,6 +12,7 @@ const (
 	writerStateRequestLine   WriterState = 1
 	writerStateHeaders       WriterState = 2
 	writerStateBody          WriterState = 3
+	writeTrailers            WriterState = 4
 )
 
 type Writer struct {
@@ -79,6 +80,25 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, fmt.Errorf("cannot write chunked body in state %d", w.writerState)
 	}
 
-	lastChunk := "0\r\n\r\n"
+	defer func() {
+		w.writerState = writeTrailers
+	}()
+
+	lastChunk := "0\r\n"
 	return w.writer.Write([]byte(lastChunk))
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.writerState != writeTrailers {
+		return fmt.Errorf("cannot write trailers in state %d", w.writerState)
+	}
+
+	for k, v := range h {
+		_, err := w.writer.Write(fmt.Appendf(nil, "%s: %s\r\n", k, v))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.writer.Write([]byte("\r\n"))
+	return err
 }

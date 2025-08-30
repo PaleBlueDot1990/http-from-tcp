@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
@@ -116,12 +119,14 @@ func proxyHandler(req *request.Request, w *response.Writer) {
 	w.WriteRequestLine(response.StatusOK)
 
 	h := response.GetDefaultHeaders(0)
-	h["Transfer-Encoding"] = "chunked"
 	delete(h, "Content-Length")
+	h["Transfer-Encoding"] = "chunked"
+	h["Trailer"] = "X-Content-SHA256, X-Content-Length"
 	w.WriteHeaders(h)
 
 	const maxChunkSize = 1024
 	buffer := make([]byte, maxChunkSize)
+	allChunks := make([]byte, 0)
 	for {
 		n, err := resp.Body.Read(buffer)
 		if err == io.EOF {
@@ -139,6 +144,10 @@ func proxyHandler(req *request.Request, w *response.Writer) {
 			break
 		}
 		fmt.Printf("Writing %d bytes to response\n", n)
+
+		len := len(allChunks) + n 
+		allChunks = append(allChunks, buffer[:n]...)
+		allChunks = allChunks[:len]
 	}
 
 	_, err = w.WriteChunkedBodyDone()
@@ -146,5 +155,13 @@ func proxyHandler(req *request.Request, w *response.Writer) {
 		fmt.Printf("Error writing chunked body done: %s", err)
 	}
 	fmt.Printf("Succesfully wrote all chunked data to response\n")
+
+	hashAllChunks := sha256.Sum256(allChunks)
+	hexStr := hex.EncodeToString(hashAllChunks[:])
+
+	trailers := make(headers.Headers)
+	trailers["X-Content-SHA256"] = hexStr
+	trailers["X-Content-Length"] = fmt.Sprintf("%d", len(allChunks))
+	w.WriteTrailers(trailers)
 }
 
