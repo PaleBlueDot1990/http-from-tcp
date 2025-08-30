@@ -30,7 +30,10 @@ func (w *Writer) WriteRequestLine(statusCode StatusCode) error {
 	if w.writerState != writerStateRequestLine {
 		return fmt.Errorf("cannot write status line in state %d", w.writerState)
 	}
-	defer func() { w.writerState = writerStateHeaders }()
+
+	defer func() { 
+		w.writerState = writerStateHeaders 
+	}()
 
 	_, err := w.writer.Write(getStatusLine(statusCode))
 	return err
@@ -40,7 +43,9 @@ func (w *Writer) WriteHeaders(h headers.Headers) error {
 	if w.writerState != writerStateHeaders {
 		return fmt.Errorf("cannot write headers in state %d", w.writerState)
 	}
-	defer func() { w.writerState = writerStateBody }()
+	defer func() { 
+		w.writerState = writerStateBody 
+	}()
 
 	for k, v := range h {
 		_, err := w.writer.Write(fmt.Appendf(nil, "%s: %s\r\n", k, v))
@@ -58,4 +63,22 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 
 	return w.writer.Write(p)
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.writerState != writerStateBody {
+		return 0, fmt.Errorf("cannot write chunked body in state %d", w.writerState)
+	}
+
+	chunk := fmt.Sprintf("%x\r\n", len(p)) + string(p) + "\r\n"
+	return w.writer.Write([]byte(chunk))
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.writerState != writerStateBody {
+		return 0, fmt.Errorf("cannot write chunked body in state %d", w.writerState)
+	}
+
+	lastChunk := "0\r\n\r\n"
+	return w.writer.Write([]byte(lastChunk))
 }

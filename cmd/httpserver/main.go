@@ -1,12 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -27,13 +31,18 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
-	if req.RequestLine.RequestTarget == "/yourproblem" {
+	t := req.RequestLine.RequestTarget
+	if t == "/yourproblem" {
 		handler400(w)
-		return
+		return 
 	}
-	if req.RequestLine.RequestTarget == "/myproblem" {
+	if t == "/myproblem" {
 		handler500(w)
 		return
+	}
+	if strings.HasPrefix(t, "/httpbin/") {
+		proxyHandler(req, w)
+		return 
 	}
 	handler200(w)
 }
@@ -90,5 +99,52 @@ func handler200(w *response.Writer) {
 	h["Content-Type"] = "text/html"
 	w.WriteHeaders(h)
 	w.WriteBody(body)
+}
+
+func proxyHandler(req *request.Request, w *response.Writer) {
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	url := "https://httpbin.org/" + target
+	fmt.Printf("Proxying to %s\n", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		handler500(w)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteRequestLine(response.StatusOK)
+
+	h := response.GetDefaultHeaders(0)
+	h["Transfer-Encoding"] = "chunked"
+	delete(h, "Content-Length")
+	w.WriteHeaders(h)
+
+	const maxChunkSize = 1024
+	buffer := make([]byte, maxChunkSize)
+	for {
+		n, err := resp.Body.Read(buffer)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Printf("Error reading response body: %s", err)
+			break
+		}
+
+		fmt.Printf("Read %d bytes from %s\n", n, url)
+		_, err = w.WriteChunkedBody(buffer[:n])
+		if err != nil {
+			fmt.Printf("Error writing chunked body to response: %s\n", err)
+			break
+		}
+		fmt.Printf("Writing %d bytes to response\n", n)
+	}
+
+	_, err = w.WriteChunkedBodyDone()
+	if err != nil {
+		fmt.Printf("Error writing chunked body done: %s", err)
+	}
+	fmt.Printf("Succesfully wrote all chunked data to response\n")
 }
 
